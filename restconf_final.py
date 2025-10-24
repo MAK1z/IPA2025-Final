@@ -2,10 +2,7 @@ import json
 import requests
 requests.packages.urllib3.disable_warnings()
 
-# Router IP Address is 10.0.15.61 (สมมติ IP นี้, ให้เปลี่ยนเป็น IP ของคุณ)
-ROUTER_IP = "10.0.15.61"
-# URL พื้นฐานสำหรับ RESTCONF configuration data
-api_url_base = f"https://{ROUTER_IP}/restconf/data/ietf-interfaces:interfaces/interface="
+# (ลบ ROUTER_IP และ api_url_base ที่ hard-code ไว้ออก)
 
 # the RESTCONF HTTP headers, including the Accept and Content-Type
 # Two YANG data formats (JSON and XML) work with RESTCONF 
@@ -16,12 +13,16 @@ headers = {
 basicauth = ("admin", "cisco")
 
 
-def create(student_id): # <-- เพิ่ม student_id เป็นพารามิเตอร์
+def create(student_id, ip_address): # <-- **การเปลี่ยนแปลงที่ 1**
+    # **การเปลี่ยนแปลงที่ 2: สร้าง URL โดยใช้ ip_address ที่รับมา**
+    api_url = f"https://{ip_address}/restconf/data/ietf-interfaces:interfaces/interface=Loopback{student_id}"
+
     # คำนวณ IP Address จาก 3 ตัวท้ายของรหัสนักศึกษา
     last_three_digits = student_id[-3:]
     x = int(last_three_digits[0])
     y = int(last_three_digits[1:])
-    ip_address = f"172.{x}.{y}.1"
+    # (เปลี่ยนชื่อตัวแปร ip_address เป็น loopback_ip เพื่อไม่ให้ซ้ำกับพารามิเตอร์)
+    loopback_ip = f"172.{x}.{y}.1" 
 
     yangConfig = {
         "ietf-interfaces:interface": {
@@ -31,7 +32,7 @@ def create(student_id): # <-- เพิ่ม student_id เป็นพาร�
             "ietf-ip:ipv4": {
                 "address": [
                     {
-                        "ip": ip_address,
+                        "ip": loopback_ip, # <-- ใช้ IP ที่คำนวณ
                         "netmask": "255.255.255.0"
                     }
                 ]
@@ -40,44 +41,50 @@ def create(student_id): # <-- เพิ่ม student_id เป็นพาร�
     }
 
     resp = requests.put(
-        url=f"{api_url_base}Loopback{student_id}", 
+        url=api_url, # <-- **การเปลี่ยนแปลงที่ 2**
         data=json.dumps(yangConfig), 
         auth=basicauth, 
         headers=headers, 
         verify=False
-        )
+    )
 
     if(resp.status_code >= 200 and resp.status_code <= 299):
         print("STATUS OK: {}".format(resp.status_code))
-        return f"Interface loopback {student_id} is created successfully"
+        # **การเปลี่ยนแปลงที่ 3: ปรับปรุงข้อความ return**
+        return f"Interface loopback {student_id} is created successfully using Restconf"
     else:
         print('Error. Status Code: {}'.format(resp.status_code))
-        # เพิ่มเงื่อนไขเช็คว่ามีอยู่แล้วหรือไม่
         if resp.status_code == 409: # Conflict
-             return f"Cannot create: Interface loopback {student_id}"
+            return f"Cannot create: Interface loopback {student_id}"
         return f"Error: Cannot create interface loopback {student_id}"
 
 
-def delete(student_id): # <-- เพิ่ม student_id เป็นพารามิเตอร์
+def delete(student_id, ip_address): # <-- **การเปลี่ยนแปลงที่ 1**
+    # **การเปลี่ยนแปลงที่ 2**
+    api_url = f"https://{ip_address}/restconf/data/ietf-interfaces:interfaces/interface=Loopback{student_id}"
+
     resp = requests.delete(
-        url=f"{api_url_base}Loopback{student_id}", 
+        url=api_url, # <-- **การเปลี่ยนแปลงที่ 2**
         auth=basicauth, 
         headers=headers, 
         verify=False
-        )
+    )
 
     if(resp.status_code >= 200 and resp.status_code <= 299):
         print("STATUS OK: {}".format(resp.status_code))
-        return f"Interface loopback {student_id} is deleted successfully"
+         # **การเปลี่ยนแปลงที่ 3**
+        return f"Interface loopback {student_id} is deleted successfully using Restconf"
     else:
         print('Error. Status Code: {}'.format(resp.status_code))
-        # เพิ่มเงื่อนไขเช็คว่าไม่มี interface ให้ลบ
         if resp.status_code == 404: # Not Found
             return f"Cannot delete: Interface loopback {student_id}"
         return f"Error: Cannot delete interface loopback {student_id}"
 
 
-def enable(student_id): # <-- เพิ่ม student_id เป็นพารามิเตอร์
+def enable(student_id, ip_address): # <-- **การเปลี่ยนแปลงที่ 1**
+    # **การเปลี่ยนแปลงที่ 2**
+    api_url = f"https://{ip_address}/restconf/data/ietf-interfaces:interfaces/interface=Loopback{student_id}"
+    
     yangConfig = {
         "ietf-interfaces:interface": {
             "name": f"Loopback{student_id}",
@@ -86,16 +93,17 @@ def enable(student_id): # <-- เพิ่ม student_id เป็นพาร�
     }
 
     resp = requests.patch( # ใช้ PATCH สำหรับการแก้ไขบางส่วน
-        url=f"{api_url_base}Loopback{student_id}", 
+        url=api_url, # <-- **การเปลี่ยนแปลงที่ 2**
         data=json.dumps(yangConfig), 
         auth=basicauth, 
         headers=headers, 
         verify=False
-        )
+    )
 
     if(resp.status_code >= 200 and resp.status_code <= 299):
         print("STATUS OK: {}".format(resp.status_code))
-        return f"Interface loopback {student_id} is enabled successfully"
+         # **การเปลี่ยนแปลงที่ 3**
+        return f"Interface loopback {student_id} is enabled successfully using Restconf"
     else:
         print('Error. Status Code: {}'.format(resp.status_code))
         if resp.status_code == 404:
@@ -103,7 +111,10 @@ def enable(student_id): # <-- เพิ่ม student_id เป็นพาร�
         return f"Error: Cannot enable interface loopback {student_id}"
 
 
-def disable(student_id): # <-- เพิ่ม student_id เป็นพารามิเตอร์
+def disable(student_id, ip_address): # <-- **การเปลี่ยนแปลงที่ 1**
+    # **การเปลี่ยนแปลงที่ 2**
+    api_url = f"https://{ip_address}/restconf/data/ietf-interfaces:interfaces/interface=Loopback{student_id}"
+
     yangConfig = {
         "ietf-interfaces:interface": {
             "name": f"Loopback{student_id}",
@@ -112,45 +123,62 @@ def disable(student_id): # <-- เพิ่ม student_id เป็นพาร�
     }
 
     resp = requests.patch( # ใช้ PATCH สำหรับการแก้ไขบางส่วน
-        url=f"{api_url_base}Loopback{student_id}", 
+        url=api_url, # <-- **การเปลี่ยนแปลงที่ 2**
         data=json.dumps(yangConfig), 
         auth=basicauth, 
         headers=headers, 
         verify=False
-        )
+    )
 
     if(resp.status_code >= 200 and resp.status_code <= 299):
         print("STATUS OK: {}".format(resp.status_code))
-        return f"Interface loopback {student_id} is shutdowned successfully"
+         # **การเปลี่ยนแปลงที่ 3**
+        return f"Interface loopback {student_id} is shutdowned successfully using Restconf"
     else:
         print('Error. Status Code: {}'.format(resp.status_code))
         if resp.status_code == 404:
-            return f"Cannot shutdown: Interface loopback {student_id}"
-        return f"Error: Cannot shutdown interface loopback {student_id}"
+             # **การเปลี่ยนแปลงที่ 3**
+            return f"Cannot shutdown: Interface loopback {student_id} (checked by Restconf)"
+        return f"Error: Cannot shutdown interface loopback {student_id} (checked by Restconf)"
 
 
-def status(student_id): # <-- เพิ่ม student_id เป็นพารามิเตอร์
-    api_url_status = f"https://{ROUTER_IP}/restconf/data/ietf-interfaces:interfaces-state/interface=Loopback{student_id}"
+def status(student_id, ip_address): # <-- **การเปลี่ยนแปลงที่ 1**
+    # **การเปลี่ยนแปลงที่ 2**
+    api_url_status = f"https://{ip_address}/restconf/data/ietf-interfaces:interfaces-state/interface=Loopback{student_id}"
 
     resp = requests.get(
-        url=api_url_status, 
+        url=api_url_status, # <-- **การเปลี่ยนแปลงที่ 2**
         auth=basicauth, 
         headers=headers, 
         verify=False
-        )
+    )
 
     if(resp.status_code >= 200 and resp.status_code <= 299):
         print("STATUS OK: {}".format(resp.status_code))
         response_json = resp.json()
-        admin_status = response_json["ietf-interfaces:interface"]["admin-status"]
-        oper_status = response_json["ietf-interfaces:interface"]["oper-status"]
-        if admin_status == 'up' and oper_status == 'up':
-            return f"Interface loopback {student_id} is enabled"
-        elif admin_status == 'down' and oper_status == 'down':
-            return f"Interface loopback {student_id} is disabled"
+        
+        # ตรวจสอบว่า key "admin-status" มีอยู่จริงหรือไม่
+        if "ietf-interfaces:interface" in response_json and "admin-status" in response_json["ietf-interfaces:interface"]:
+            admin_status = response_json["ietf-interfaces:interface"]["admin-status"]
+            oper_status = response_json["ietf-interfaces:interface"]["oper-status"]
+            
+            if admin_status == 'up' and oper_status == 'up':
+                 # **การเปลี่ยนแปลงที่ 3**
+                return f"Interface loopback {student_id} is enabled (checked by Restconf)"
+            elif admin_status == 'down' and oper_status == 'down':
+                 # **การเปลี่ยนแปลงที่ 3**
+                return f"Interface loopback {student_id} is disabled (checked by Restconf)"
+            else:
+                return f"Interface loopback {student_id} state is {admin_status}/{oper_status} (checked by Restconf)"
+        else:
+            return f"Could not parse status for interface loopback {student_id} (checked by Restconf)"
+
+    # <-- **การเปลี่ยนแปลงที่ 4 (แก้ไข Bug)**: ย้าย elif ออกมานอก if block แรก
     elif(resp.status_code == 404):
         print("STATUS NOT FOUND: {}".format(resp.status_code))
-        return f"No Interface loopback {student_id}"
+         # **การเปลี่ยนแปลงที่ 3**
+        return f"No Interface loopback {student_id} (checked by Restconf)"
     else:
         print('Error. Status Code: {}'.format(resp.status_code))
-        return f"Error: Cannot get status for interface loopback {student_id}"
+         # **การเปลี่ยนแปลงที่ 3**
+        return f"Error: Cannot get status for interface loopback {student_id} (checked by Restconf)"
