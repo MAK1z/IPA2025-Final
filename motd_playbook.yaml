@@ -1,0 +1,15 @@
+---
+- name: Set MOTD
+  hosts: all
+  gather_facts: false
+  connection: network_cli
+
+  tasks:
+    - name: Apply MOTD banner
+      cisco.ios.ios_banner:
+        banner: motd
+        # (V)--- นี่คือการแก้ไข --- (V)
+        # เราใช้ filter 'b64decode' เพื่อถอดรหัสตัวแปร
+        text: "{{ motd_message_b64 | b64decode }}"
+        # (A)--- จบการแก้ไข --- (A)
+        state: present

@@ -1,44 +1,80 @@
-import subprocess
-import os # <--- STEP 1: Import the 'os' library
+import ansible_runner
+import os
+import shutil
+import time
+import subprocess # <-- (เพิ่ม) import สำหรับ set_motd
+import json
+import base64
 
-# ฟังก์ชันนี้ต้องรับ student_id และ router_name มาจากไฟล์หลัก
-# เพื่อสร้างชื่อไฟล์และส่งเป็นตัวแปรให้ playbook
-def showrun(student_id, router_name):
-    # read https://www.datacamp.com/tutorial/python-subprocess to learn more about subprocess
+# -----------------------------------------------------------------
+# (1) ฟังก์ชัน SHOWRUN (วิธีเดิมที่ใช้ ansible-runner)
+# -----------------------------------------------------------------
+# (สมมติว่าคุณมีฟังก์ชัน showrun อยู่แล้ว)
+# def showrun(student_id, router_name):
+#    ... (โค้ด showrun ที่ใช้ ansible-runner ของคุณ) ...
+#    return "ok", "filename.txt"
 
-    # สร้างชื่อไฟล์ที่เราคาดหวังว่าจะได้จาก playbook
-    filename = f"show_run_{student_id}_{router_name}.txt"
-    
-    # ประกอบร่างคำสั่ง ansible-playbook ให้สมบูรณ์
-    # -i hosts: ระบุ inventory file
-    # --extra-vars: ส่งตัวแปรจาก Python เข้าไปใน playbook
-    command = [
-        'ansible-playbook',
-        'playbook.yaml',
-        '-i', 'hosts',
-        '--extra-vars', f"student_id={student_id} router_name={router_name}"
+
+# -----------------------------------------------------------------
+# (2) ฟังก์ชัน SET_MOTD (วิธีใหม่ที่ใช้ subprocess)
+# -----------------------------------------------------------------
+def set_motd(host_ip, message):
+    """
+    ใช้ ansible-playbook (subprocess) เพื่อตั้งค่า MOTD (เข้ารหัส Base64)
+    """
+    playbook_path = 'motd_playbook.yaml'
+    inventory_path = 'hosts'
+
+    ansible_executable = shutil.which('ansible-playbook')
+
+    if not ansible_executable:
+        print("Error: 'ansible-playbook' command not found.")
+        return "Error: 'ansible-playbook' command not found."
+
+
+    # (V--- [นี่คือการแก้ไข] ---V)
+    # 1. เข้ารหัสข้อความ (Message) เป็น Base64
+    message_bytes = message.encode('utf-8')
+    base64_bytes = base64.b64encode(message_bytes)
+    base64_message = base64_bytes.decode('utf-8')
+
+    # 2. สร้าง Dictionary (ใช้ชื่อตัวแปรใหม่)
+    vars_dict = {
+        "motd_message_b64": base64_message
+    }
+    # 3. แปลง Dictionary เป็น JSON String (ปลอดภัยที่สุด)
+    extra_vars = json.dumps(vars_dict)
+    # (A--- [จบการแก้ไข] ---A)
+
+
+    # สร้างคำสั่งที่จะรัน
+    command_args = [
+        ansible_executable,
+        "-i", inventory_path,
+        playbook_path,
+        "--limit", host_ip,
+        "-e", extra_vars # <-- ใช้ตัวแปร JSON ที่แก้ไขแล้ว
     ]
 
-    # --- THE FINAL FIX IS HERE ---
-    # STEP 2: Explicitly tell Ansible where to find its configuration file.
-    # This forces it to read 'host_key_checking = False'
-    env = os.environ.copy()
-    env['ANSIBLE_CONFIG'] = './ansible.cfg'
-    # ---------------------------
+    try:
+        print(f"Running command: {' '.join(command_args)}")
+        # รันคำสั่ง
+        process = subprocess.run(command_args, capture_output=True, text=True, check=True, timeout=90)
 
-    # รันคำสั่ง, but now with the correct environment
-    result = subprocess.run(command, capture_output=True, text=True, env=env) # <--- STEP 3: Add env=env
-    
-    # เก็บผลลัพธ์ stdout เพื่อนำมาตรวจสอบ
-    ansible_output = result.stdout
-    print("----- Ansible Output -----")
-    print(ansible_output)
-    print("--------------------------")
+        # ตรวจสอบผลลัพธ์ว่าสำเร็จ (failed=0 และ changed=1)
+        if 'failed=0' in process.stdout and 'changed=1' in process.stdout:
+            print("Ansible MOTD command successful (changed=1).")
+            return "Ok: success"
+        elif 'failed=0' in process.stdout:
+             print("Ansible MOTD command successful (changed=0).")
+             return "Ok: success (No changes needed)"
+        else:
+            print(f"Ansible MOTD command failed. Output:\n{process.stdout}\n{process.stderr}")
+            return "Error: Failed to set MOTD via Ansible."
 
-    # ตรวจสอบผลลัพธ์: 'ok=2' หมายถึง 2 tasks สำเร็จ และ 'failed=0' คือไม่มี task ไหนล้มเหลว
-    if 'ok=2' in ansible_output and 'failed=0' in ansible_output:
-        # ถ้าสำเร็จ คืนค่า 'ok' และชื่อไฟล์ที่สร้างขึ้น
-        return "ok", filename
-    else:
-        # ถ้าล้มเหลว คืนค่า Error และ None สำหรับชื่อไฟล์
-        return "Error: Ansible", None
+    except subprocess.CalledProcessError as e:
+        print(f"Ansible execution failed:\nSTDOUT: {e.stdout}\nSTDERR: {e.stderr}")
+        return f"Error: Ansible execution failed. Check logs."
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return f"An unexpected error occurred: {e}"

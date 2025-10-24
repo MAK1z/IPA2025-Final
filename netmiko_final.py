@@ -1,79 +1,55 @@
 from netmiko import ConnectHandler
-from pprint import pprint
+import re # <-- (เพิ่ม) import สำหรับ get_motd
 
-# เปลี่ยนเป็น IP ของ Router ที่คุณได้รับมอบหมาย
-device_ip = "10.0.15.61"
-username = "admin"
-password = "cisco"
+# -----------------------------------------------------------------
+# (1) ฟังก์ชัน GIGABIT_STATUS (วิธีเดิม)
+# -----------------------------------------------------------------
+# (สมมติว่าคุณมีฟังก์ชัน gigabit_status อยู่แล้ว)
+# def gigabit_status():
+#    ... (โค้ด gigabit_status ของคุณ) ...
+#    return "GigabitEthernet1 is up/up"
 
-device_params = {
-    "device_type": "cisco_ios",
-    "ip": device_ip,
-    "username": username,
-    "password": password,
-    "conn_timeout": 30,
-}
 
-def gigabit_status():
-    ans = ""
+# -----------------------------------------------------------------
+# (2) ฟังก์ชัน GET_MOTD (วิธีใหม่ที่ใช้ re.DOTALL)
+# -----------------------------------------------------------------
+def get_motd(host_ip):
+    """
+    ใช้ Netmiko (show run) และ Regex (DOTALL) เพื่อดึง MOTD
+    """
+
+    # (!!!) -----------------------------------------------------------------
+    # (!!!) **สำคัญ:** แก้ไข USERNAME/PASSWORD ให้ถูกต้อง
+    # (!!!) (ต้องตรงกับที่ใช้ใน Netconf/Restconf/Ansible)
+    # (!!!) -----------------------------------------------------------------
+    device_params = {
+        'device_type': 'cisco_ios',
+        'host': host_ip,
+        'username': 'admin',
+        'password': 'cisco',
+    }
+
     try:
-        with ConnectHandler(**device_params) as ssh:
-            up = 0
-            down = 0
-            admin_down = 0
-            detailed_statuses = []
+        with ConnectHandler(**device_params) as connection:
+            # ดึง 'show run' ทั้งหมด (ตามโค้ดตัวอย่างของคุณ)
+            running_config = connection.send_command("show running-config", use_textfsm=False)
 
-            # ดึงข้อมูลเป็น string ธรรมดา โดยไม่ใช้ TextFSM
-            result_string = ssh.send_command("show ip interface brief", use_textfsm=False)
-            
-            # แยกผลลัพธ์ออกเป็นทีละบรรทัด และข้ามบรรทัดหัวข้อ (บรรทัดแรก)
-            lines = result_string.strip().split('\n')[1:]
+            # ใช้ re.DOTALL เพื่อให้ '.' จับคู่ newline ได้ (กรณี MOTD หลายบรรทัด)
+            match = re.search(r"banner motd (.)(.*?)\1", running_config, re.DOTALL)
 
-            for line in lines:
-                parts = line.split() # แยกแต่ละบรรทัดด้วยช่องว่าง
-                if not parts: # ข้ามบรรทัดที่ว่างเปล่า
-                    continue
+            if match:
+                # Group 2 คือข้อความ MOTD
+                motd_message = match.group(2).strip()
 
-                interface_name = parts[0]
-                
-                # กรองเอาเฉพาะ Interface ที่เราสนใจ
-                if interface_name.startswith("GigabitEthernet"):
-                    # สถานะจะอยู่ที่ 2 ตำแหน่งสุดท้ายของ list (เช่น 'administratively', 'down')
-                    # หรือตำแหน่งเดียวก่อนสุดท้าย (เช่น 'up', 'down')
-                    # เราจะตรวจสอบจาก Protocol status (ตัวสุดท้าย) ก่อน
-                    protocol_status = parts[-1]
-                    admin_status = parts[-2]
+                # ตรวจสอบว่าข้อความว่างเปล่าหรือไม่ (เช่น banner motd ##)
+                if motd_message:
+                    return motd_message
+                else:
+                    return "Error: No MOTD Configured"
+            else:
+                # ถ้าไม่เจอ 'banner motd ...' เลย
+                return "Error: No MOTD Configured"
 
-                    current_status = ""
-                    if admin_status == "administratively" and protocol_status == "down":
-                        current_status = "administratively down"
-                    elif protocol_status == "up":
-                        current_status = "up"
-                    elif protocol_status == "down":
-                        current_status = "down"
-                    else:
-                        continue # ถ้าไม่เจอสถานะที่รู้จักก็ข้ามไป
-
-                    # สร้างข้อความสำหรับแต่ละ interface
-                    status_line = f"{interface_name} {current_status}"
-                    detailed_statuses.append(status_line)
-                    
-                    # นับจำนวนตามสถานะ
-                    if current_status == "up":
-                        up += 1
-                    elif current_status == "down":
-                        down += 1
-                    elif current_status == "administratively down":
-                        admin_down += 1
-            
-            # ประกอบร่างข้อความสุดท้าย
-            details = ", ".join(detailed_statuses)
-            summary = f"{up} up, {down} down, {admin_down} administratively down"
-            ans = f"{details} -> {summary}"
-            
-            pprint(ans)
-            return ans
-    
     except Exception as e:
-        print(f"An error occurred in Netmiko: {e}")
-        return "Error: Could not connect to the device or process the command."
+        print(f"Error connecting or reading MOTD: {e}")
+        return f"Error: Could not connect to {host_ip} or read MOTD"

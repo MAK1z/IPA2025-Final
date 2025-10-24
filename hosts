@@ -1,2 +1,16 @@
-[ios]
-CSR1KV-Pod1-1 ansible_host=10.0.15.61 ansible_user=admin ansible_password=cisco ansible_network_os=ios ansible_connection=network_cli
+[all:vars]
+ansible_network_os=cisco.ios.ios
+ansible_user=admin
+ansible_password=cisco
+ansible_connection=network_cli
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+ansible_become=yes
+ansible_become_method=enable
+ansible_become_password=cisco
+
+[ios_routers]
+10.0.15.61
+10.0.15.62
+10.0.15.63
+10.0.15.64
+10.0.15.65
