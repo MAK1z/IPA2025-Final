@@ -2,7 +2,6 @@ import json
 import requests
 requests.packages.urllib3.disable_warnings()
 
-# (ลบ ROUTER_IP และ api_url_base ที่ hard-code ไว้ออก)
 
 # the RESTCONF HTTP headers, including the Accept and Content-Type
 # Two YANG data formats (JSON and XML) work with RESTCONF 
